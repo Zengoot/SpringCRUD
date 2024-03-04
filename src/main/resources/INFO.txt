@@ -1,0 +1,137 @@
+Связь с БД
+Паттерн DAO (Data Access Object)
+Для устр\ойчивой и корректной работы мы хотим вынести логику взаимодействия с БД
+из самой модели в отдельный класс. Паттерн проектирования, когда отдельный класс
+занимается взаимодействием с БД для конкретной сущности называется DAO.
+
+Благодаря этиому мы получим:
+
+Вся логика работы с БД для модели Person инкапсулируется в класс PersonDAO
+В DAO лассах обычно пишется SQL код для работы с БД приложения(чтение, запись,
+обновление, удаление).
+
+Есть другой паттерн взаимодействия с БД - репозиторий. Его лучше изучать вместе со
+Hibernate и Spring Data JPA. Этот паттерн предоставляет бОльшую абстракцию
+над БД, чем DAO.
+
+Модель CRUD приложения через DAO, который в этом проекте реализуется:
+
+                                          READ + CREATE
+View ---> PeopleController --> PersonDAO -----> БД
+     <---   (Controller)   <--    |A     <-----
+                                  ||
+GET/people                        V|
+GET/people/:id                  Person
+                                (Model)
+      +
+
+GET/people/new
+POST/people
+
+
+HTML форма:
+
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>New person</title>
+</head>
+<body>
+
+<form th:method="POST" th:action="@{/people}" th:object="${person}">
+    <label for="name">Enter name: </label>
+    <input type="text" th:field="*{name}" id="name"/>
+    <br/>
+    <input type="submit" value="Create!"/>
+</form>
+
+</body>
+</html>
+
+Аннотация  @ModelAttribute
+Значительно упрощает код.
+Работает в зависимости от того , что она аннотирует:
+1) Метод:
+В модель в каждом методе текущего контролера добавляет ключ-значение
+Используется для добавления тех пар ключ-значение, которые нужны во всех моделях
+этого контроллера.
+Любая модель из этого контроллера по умолчанию будет иметь значение
+с ключом headerMessage
+Может добавлять в модель любой объект.
+
+2) Аргумент метода:
+Берет на себя создание нового объекта
+Добавление значений в поля из html формы
+Добавление созданного объекта с полями в модель.
+
+!!!!!!!Без @ModelAttribute:
+
+@PostMapping()
+public String create(@RequestParam("name") String name,
+                     @RequestParam("surname") String surname,
+                     @RequestParam("email") String email,
+                     Model model) {
+    Person person = new Person();
+
+    person.setName(name);
+    person.setSurname(surname);
+    person.setEmail(email);
+
+    model.addAttribute("person", person)
+
+    return "successPage";
+}
+
+!!!!!!!C @ModelAttribute:
+
+@PostMapping()
+public String create(@ModelAttribute("person") Person person) {
+    personDAO.save(person);
+    return "redirect:/people";
+}
+
+То есть сама аннотация @ModelAttribute определение параметры
+Если же поля будут пустыми, то аннотация создаст модель с пустыми значениями
+(значениями по умолчанию), в нашем случае:
+name = null, surname = null, email = null. При этом такой объект класса person
+тоже будет положен модель и мы будем  иметь к нему доступ в нашем шаблоне.
+
+
+Деталь реализации PATCH, DELETE и др. запросов
+
+HTTP методы:                    HTML 5:
+GET                             GET
+POST                            POST
+PATCH
+DELETE
+PUT
+
+HEAD
+CONNECT
+OPTIONS
+.......
+
+Проблема в том, что последняя версия HTML(стандарт HTML 5) может использовать
+только GET и POST.
+Могли бы все делать через POST, но хочется использовать возможности
+протокола HTTP. ПОэтому разработчики прибегают к хитрости:
+PATCH, DELETE, PUT запросы передаются с помощью POST запроса, но в
+скрутом поле _method указывается желаемый HTTP метод.
+!!!!!!!Thymeleaf берет это на себя.
+Пример:
+<form method="post" action="/people/1">
+    <input type="hidden" name="_method" value+"patch"> = $0
+    <label for="name"> Enter name: </label>
+
+Как решается проблема?
+
+На стороне Spring приложения - с помощью фильтров.
+
+Фильтр-объект который перехватывает все входящие HTTP запросы.
+В данном случае фильтр используется для того, чтобы смотреть
+на значение поля _method в поступающих HTTP запросах(если это поле есть).
+Сейчас реализуем это вручную, но при переходе на Spring Boot
+это будет делаться в 1 строку конфигурационного файла.
+
+
